@@ -5,6 +5,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uz.pdp.appjwtemail.payload.ApiResponse;
+import uz.pdp.appjwtemail.payload.LoginDto;
 import uz.pdp.appjwtemail.payload.RegisterDto;
 import uz.pdp.appjwtemail.service.AuthService;
 
@@ -18,6 +19,12 @@ public class AuthController {
     @PostMapping("/register")
     public HttpEntity<?> register(@RequestBody RegisterDto registerDto) {
         ApiResponse apiResponse = authService.registerService(registerDto);
+        return ResponseEntity.status(apiResponse.isSuccess() ? 201 : 409).body(apiResponse);
+    }
+
+    @PostMapping("/login")
+    public HttpEntity<?> loginToSystem(@RequestBody LoginDto loginDto) {
+        ApiResponse apiResponse = authService.loginService(loginDto);
         return ResponseEntity.status(apiResponse.isSuccess() ? 201 : 409).body(apiResponse);
     }
 

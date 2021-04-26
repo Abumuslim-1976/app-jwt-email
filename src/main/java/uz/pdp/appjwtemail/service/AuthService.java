@@ -1,23 +1,34 @@
 package uz.pdp.appjwtemail.service;
 
+import net.bytebuddy.implementation.bytecode.Throw;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import uz.pdp.appjwtemail.entity.User;
+
 import uz.pdp.appjwtemail.entity.enums.RoleName;
 import uz.pdp.appjwtemail.payload.ApiResponse;
+import uz.pdp.appjwtemail.payload.LoginDto;
 import uz.pdp.appjwtemail.payload.RegisterDto;
 import uz.pdp.appjwtemail.repository.RoleRepository;
 import uz.pdp.appjwtemail.repository.UserRepository;
+import uz.pdp.appjwtemail.security.JwtProvider;
 
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
-public class AuthService {
+public class AuthService implements UserDetailsService {
 
     @Autowired
     UserRepository userRepository;
@@ -27,6 +38,10 @@ public class AuthService {
     RoleRepository roleRepository;
     @Autowired
     JavaMailSender javaMailSender;
+    @Autowired
+    AuthenticationManager authenticationManager;
+    @Autowired
+    JwtProvider jwtProvider;
 
 
     public ApiResponse registerService(RegisterDto registerDto) {
@@ -43,24 +58,32 @@ public class AuthService {
         user.setEmailCode(UUID.randomUUID().toString());
         userRepository.save(user);
 
-        sendSimpleMessage(user.getEmail(), user.getEmailCode());
-
+//        sendSimpleMessage(user.getEmail(), user.getEmailCode());
         return new ApiResponse("Muvaffaqiyatli ro`yxatdan o`tdingiz.Akkountni aktivlashtirish uchun emailni tasdiqlang", true);
+    }
+
+    public ApiResponse loginService(LoginDto loginDto) {
+        try {
+            Authentication authenticate = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
+                    loginDto.getUsername(),
+                    loginDto.getPassword()
+            ));
+            User user = (User) authenticate.getPrincipal();
+            String token = jwtProvider.generateToken(user.getEmail(),user.getRoles());
+            return new ApiResponse("User sistemaga login qildi", true, token);
+        } catch (BadCredentialsException e) {
+            return new ApiResponse("User login qila olmadi ", false);
+        }
 
     }
 
-    public boolean sendSimpleMessage(String email, String emailCode) {
-        try {
-            SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
-            simpleMailMessage.setFrom("noreply@gmail.com");
-            simpleMailMessage.setTo(email);
-            simpleMailMessage.setSubject("Akkountni tasdiqlash");
-            simpleMailMessage.setText("<a href='http://localhost:8080/api/aut/verifyEmail?emailCode=" + emailCode + "&email=" + email + "'>Tasdiqlash</a>");
-            javaMailSender.send(simpleMailMessage); 
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+    public void sendSimpleMessage(String email, String emailCode) {
+        SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
+        simpleMailMessage.setFrom("noreply@gmail.com");
+        simpleMailMessage.setTo(email);
+        simpleMailMessage.setSubject("Akkountni tasdiqlash");
+        simpleMailMessage.setText("<a href='http://localhost:8080/api/auth/verifyEmail?emailCode=" + emailCode + "&email=" + email + "'>Tasdiqlash</a>");
+        javaMailSender.send(simpleMailMessage);
     }
 
     public ApiResponse verify(String emailCode, String email) {
@@ -73,5 +96,17 @@ public class AuthService {
             return new ApiResponse("Akkount tasdiqlandi", true);
         }
         return new ApiResponse("Akkount allaqachon tasdiqlangan", false);
+    }
+
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        Optional<User> byEmail = userRepository.findByEmail(username);
+        if (byEmail.isPresent()){
+            return byEmail.get();
+        }else {
+            throw new UsernameNotFoundException(username + " topilmadi");
+        }
+//        return userRepository.findByEmail(username).orElseThrow(() -> new UsernameNotFoundException(username + " topilmadi"));
     }
 }
